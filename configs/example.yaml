@@ -14,12 +14,19 @@ data:
   target_column: income
   positive_label: ">50K"
   audit_column: sex
+  missing_category_marker: __MISSING__
+  duplicate_policy: exact_cleaned_15_columns_train_priority
 
 model:
   name: CatBoostClassifier
   task_type: CPU
+  iterations: 400
+  depth: 6
+  learning_rate: 0.08
+  early_stopping_rounds: 60
 
 monitoring:
   reference_split: reference
   current_split: current
-  minimum_group_size: 30
+  decision_threshold: 0.5
+  alert_f1_margin: 0.05
