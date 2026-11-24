@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adult-income-monitoring"
+version = "0.1.0"
+description = "Учебный стенд мониторинга модели на UCI Adult Income"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "catboost==1.2.10",
+    "evidently==0.7.23",
+    "pandas==2.3.3",
+    "PyYAML==6.0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

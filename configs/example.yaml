@@ -1,0 +1,25 @@
+project:
+  name: adult-income-monitoring
+  random_seed: 42
+
+paths:
+  raw_data: data/raw
+  interim_data: data/interim
+  processed_data: data/processed
+  model: models/catboost.cbm
+  reports: reports
+
+data:
+  source: https://archive.ics.uci.edu/dataset/2/adult
+  target_column: income
+  positive_label: ">50K"
+  audit_column: sex
+
+model:
+  name: CatBoostClassifier
+  task_type: CPU
+
+monitoring:
+  reference_split: reference
+  current_split: current
+  minimum_group_size: 30
