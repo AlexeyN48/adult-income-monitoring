@@ -30,3 +30,18 @@ monitoring:
   current_split: current
   decision_threshold: 0.5
   alert_f1_margin: 0.05
+
+scenarios:
+  seed: 42
+  output_dir: data/processed/scenarios
+  feature_drift:
+    age_delta: 5
+  feature_drift_strong:
+    age_delta: 15
+  target_drift:
+    positive_rate: 0.60
+  fairness_shift:
+    female_positive_rate: 0.03
+    # female_rows defaults to the Female count in current.csv.
+  fairness_defect:
+    female_probability_multiplier: 0.05
