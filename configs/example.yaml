@@ -30,6 +30,14 @@ monitoring:
   current_split: current
   decision_threshold: 0.5
   alert_f1_margin: 0.05
+  numeric_drift_threshold: 0.1
+  categorical_drift_threshold: 0.1
+  fairness_thresholds:
+    dpd_abs: 0.10
+    di_min: 0.80
+    tpr_gap_abs: 0.10
+    min_group_rows: 30
+    min_positive_labels: 30
 
 scenarios:
   seed: 42
