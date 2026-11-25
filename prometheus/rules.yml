@@ -1,0 +1,84 @@
+groups:
+  - name: adult-model
+    interval: 5s
+    rules:
+      - alert: MonitoringUnavailable
+        expr: ml_monitoring_available == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Monitoring report unavailable or stale
+          description: Exporter has no fresh accepted Evidently result.
+
+      - alert: ExporterDown
+        expr: up{job="adult-monitoring"} == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Adult monitoring exporter is down
+          description: Prometheus cannot scrape the exporter.
+
+      - alert: ModelF1Low
+        expr: (ml_f1_score < ml_f1_threshold) and on(job, instance) (ml_monitoring_available == 1)
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Positive-class F1 is below its validation threshold
+          description: Current scenario F1 is {{ $value }}.
+
+      - alert: FeatureDriftDetected
+        expr: (ml_feature_drift_detected == 1) and on(job, instance) (ml_monitoring_available == 1)
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Feature drift detected for {{ $labels.feature }}
+          description: Evidently per-feature score crossed the configured threshold.
+
+      - alert: TargetDriftDetected
+        expr: (ml_target_drift_detected == 1) and on(job, instance) (ml_monitoring_available == 1)
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Target distribution drift detected
+          description: Evidently target drift test failed.
+
+      - alert: FemaleTargetDriftDetected
+        expr: (ml_female_target_drift_detected == 1) and on(job, instance) (ml_monitoring_available == 1)
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Female subgroup target distribution drift detected
+          description: Evidently female subgroup target drift test failed.
+
+      - alert: FairnessThresholdViolated
+        expr: (((ml_disparate_impact < ml_fairness_di_min) or (ml_dpd_abs > ml_fairness_dpd_abs_max) or (ml_tpr_gap_abs > ml_fairness_tpr_gap_abs_max)) and on(job, instance) (ml_fairness_valid == 1)) and on(job, instance) (ml_monitoring_available == 1)
+        for: 20s
+        labels:
+          severity: warning
+        annotations:
+          summary: One or more fairness thresholds are violated
+          description: DI, absolute DPD, or absolute TPR gap crossed its configured report threshold.
+
+      - alert: FairnessMetricsInvalid
+        expr: (ml_fairness_valid == 0) and on(job, instance) (ml_monitoring_available == 1)
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: Fairness metrics are not assessable
+          description: Group counts or denominators are insufficient; missing values are not treated as zero.
+
+      - alert: FairnessDeteriorated
+        expr: ((ml_disparate_impact / ml_disparate_impact_reference < 0.8) and on(job, instance) (ml_disparate_impact_reference > 0)) and on(job, instance) (ml_fairness_valid == 1) and on(job, instance) (ml_monitoring_available == 1)
+        for: 20s
+        labels:
+          severity: critical
+        annotations:
+          summary: Disparate impact deteriorated against fixed reference
+          description: Current DI is less than 80% of reference DI.
