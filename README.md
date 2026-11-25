@@ -2,6 +2,8 @@
 
 Учебный проект подготовки CatBoost на настоящем датасете UCI Adult с дальнейшим мониторингом. Реализованы подготовка данных, модель, сценарии, отчёты Evidently и Prometheus stack.
 
+Для защиты начните с [пошагового сценария](docs/DEMO_RUNBOOK.md). [Карточка модели](docs/MODEL_CARD.md) объясняет данные, метрики и ограничения, [runbook инцидентов](docs/INCIDENT_RUNBOOK.md) — восстановление, [итог проверки](docs/VERIFICATION.md) — фактические результаты чистого запуска. Проект проверен программно; скриншоты интерфейса выполняются вручную.
+
 ## Подготовка окружения
 
 Нужен CPython 3.12 (проверенная команда в этой среде — `python`; launcher `py -3.12` не работает). Зависимости устанавливаются только в виртуальное окружение проекта:
@@ -165,8 +167,10 @@ docker compose ps
 Первый старт экспортера рассчитывает baseline; это может занять несколько минут. Если окружение чистое и артефактов ещё нет, сначала подготовьте их отдельным init-профилем:
 
 ```powershell
+docker compose --profile init build
 docker compose --profile init run --rm init
 docker compose --profile init run --rm init python -m adult_monitoring scenarios --config configs/example.yaml
+docker compose --profile init run --rm init python -m adult_monitoring monitor --config configs/example.yaml --scenario all
 docker compose up --build -d
 ```
 
@@ -183,7 +187,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/scenario `
 
 ## PromQL для графиков
 
-Вставьте запросы в Prometheus Graph. Метрика F1 не имеет scenario label, поэтому baseline → defect → recovery рисуется одной временной серией.
+Вставляйте запросы в Prometheus Graph по одному. Метрика F1 не имеет scenario label, поэтому baseline → defect → recovery рисуется одной временной серией. Для F1 и порога вместе используйте `{__name__=~"ml_f1_score|ml_f1_threshold"}`.
 
 ```promql
 ml_f1_score
@@ -248,3 +252,9 @@ docker compose exec -T exporter python scripts/plot_prometheus_evidence.py
 Порог во всех случаях — 0.663487. Получена реальная серия `ALERTS{alertname="ModelF1Low",alertstate="firing"}`. В evidence.json сохранены 14 samples F1, 14 samples порога и 4 samples firing ALERTS. График `reports/prometheus_demo/f1.png` проверен по сохранённым данным. Отдельно на работающем стенде зафиксирован FeatureDriftDetected в Firing с `feature="age"`; ответ API сохранён в `reports/prometheus_demo/drift_alert.json`.
 
 Стенд после проверки оставлен в recovery: низкий F1 устранён. Исходный абсолютный fairness-сигнал сохраняется ожидаемо. Интерфейс браузера не открывался автоматически; ручной показ графика и Alerts нужен для защиты. История Prometheus сохраняется в volume; `docker compose down` остановит этот стенд, сохранив историю. Для повторного показа можно снова запустить verify_stack.py.
+
+## Готовность к защите
+
+В блоке 6 повторён путь на пустых data/models/reports и новой истории Prometheus в отдельном стеке. Загрузка UCI, обучение, семь сценариев/отчётов, promtool и цикл ModelF1Low Inactive → Pending → Firing → Inactive прошли. Validation F1 снова 0.713487, порог 0.663487; рабочие 17 артефактов сохранили SHA. Временный стек остановлен, основной оставлен работающим.
+
+Код и инструкции готовы. Для сдачи осталось самостоятельно снять реальные кадры Evidently и Prometheus по [списку](docs/DEMO_RUNBOOK.md), приложить нужные отчёты и оформить последний PR. Показ и понятные ответы на вопросы описаны в runbook; полный [протокол проверки](docs/VERIFICATION.md) отделяет подтверждённые результаты от ручных шагов.
