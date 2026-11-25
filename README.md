@@ -1,6 +1,6 @@
 # Adult Income: стенд мониторинга ML
 
-Учебный проект подготовки CatBoost на настоящем датасете UCI Adult с дальнейшим мониторингом. В блоках 2–4 готовы загрузка/кеширование данных, разбиение, обучение, воспроизводимые сценарии и Evidently monitoring. Prometheus и Docker Compose будут добавлены отдельными блоками.
+Учебный проект подготовки CatBoost на настоящем датасете UCI Adult с дальнейшим мониторингом. Реализованы подготовка данных, модель, сценарии, отчёты Evidently и Prometheus stack.
 
 ## Подготовка окружения
 
@@ -12,7 +12,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-Если `.venv` уже создана, используйте её, не пересоздавая. Прямые зафиксированные зависимости указаны в `pyproject.toml`: CatBoost 1.2.10, Evidently 0.7.23, pandas 2.3.3 и PyYAML 6.0.3.
+Если `.venv` уже создана, используйте её, не пересоздавая. После обновления зависимостей повторите `.\.venv\Scripts\python.exe -m pip install -e .`. Прямые зависимости указаны в `pyproject.toml`: CatBoost 1.2.10, Evidently 0.7.23, pandas 2.3.3, prometheus-client 0.26.0 и PyYAML 6.0.3.
 
 ## Получить данные и обучить модель
 
@@ -100,11 +100,11 @@ Baseline уже не проходит абсолютные DPD/DI учебные
 
 Порог будущего алерта равен **0.663487**. Лучшая итерация модели — 320 (нумерация с нуля). Повторный полный запуск дал те же метрики и побайтно совпадающие прогнозные CSV; SHA самого файла CBM между обучениями менялся, поэтому побайтная идентичность модели не гарантируется. В манифесте фиксируется SHA текущего файла. Транзитивные зависимости пока не зафиксированы lock-файлом.
 
-Сеть из обычной сессии агента была недоступна: установка в `.venv` и первая загрузка UCI выполнены через разрешённый сетевой запуск. Последующие запуски подготовки используют локальный архив. Результат блока 2 проверяет обучение и артефакты; результаты Evidently описаны ниже в блоке 4. Prometheus ещё не реализован. Работоспособность Docker Engine по-прежнему не подтверждена.
+Сеть из обычной сессии агента была недоступна: установка в `.venv` и первая загрузка UCI выполнены через разрешённый сетевой запуск. Последующие запуски подготовки используют локальный архив. Результат блока 2 проверяет обучение и артефакты; результаты Evidently и Prometheus описаны ниже в блоках 4 и 5.
 
 ## Проверки
 
-Запуск 17 тестов подготовки данных, обучения, сценариев и мониторинга. Проверяются повторяемость seed, восстановление, сохранение меток и признаков, синтетический дефект, неверный checksum и неопределённые fairness-метрики. Тесты автономны: используют маленькие явно синтетические данные и временные файлы, не требуют загрузки Adult и не изменяют рабочие артефакты:
+Запуск 25 тестов подготовки данных, обучения, сценариев, Evidently и экспортера. Проверяются повторяемость seed, восстановление, сохранение меток и признаков, синтетический дефект, неверный checksum, неопределённые fairness-метрики, свежесть, согласованность метрик и конкурирующие HTTP-запросы. Тесты автономны: используют маленькие явно синтетические данные и временные файлы, не требуют загрузки Adult и не изменяют рабочие артефакты:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
@@ -126,7 +126,7 @@ Baseline уже не проходит абсолютные DPD/DI учебные
 | fairness_defect | Синтетическое подавление вероятности Female | 0.644947 |
 | recovery | Возврат к baseline | 0.703191 |
 
-В target_drift имеется 3 093 повторных выборки сверх числа уникальных row_id, в fairness_shift — 1 051. Повторы не являются новыми независимыми наблюдениями. Сдвиг возраста и баланса классов сам по себе не обязан уменьшать F1. В синтетическом дефекте F1 ниже заранее сохранённого порога 0.663487; это подготовленный вход для будущего показа алерта, а не уже сработавший Prometheus.
+В target_drift имеется 3 093 повторных выборки сверх числа уникальных row_id, в fairness_shift — 1 051. Повторы не являются новыми независимыми наблюдениями. Сдвиг возраста и баланса классов сам по себе не обязан уменьшать F1. Синтетический дефект с F1 ниже заранее сохранённого порога 0.663487 используется в блоке 5 для проверки алерта ModelF1Low.
 
 ## Фактический результат блока 4
 
@@ -148,4 +148,103 @@ Baseline уже не проходит абсолютные DPD/DI учебные
 
 Типы колонок заданы явно через Evidently DataDefinition из схемы обучения: это исключает автоматическое превращение возраста в категориальный столбец на маленьком пакете. Оркестратор независимо сверил все семь результатов с sklearn (F1), прямыми групповыми формулами и SciPy (Wasserstein и Jensen–Shannon для общего target и Female target). Подбор порогов по текущим сценариям не проводился.
 
-Будущий экспортер должен читать `monitoring.json` только при `status.json.status == success`, совпадающем `calculated_at_utc` и `monitoring.json.status == success`; дополнительно проверять давность расчёта. `success` обозначает завершённый расчёт, а здоровье модели определяется отдельными pass/fail проверками. Одновременные записи одного сценария пока не поддерживаются; расчёты выполняются последовательно.
+`success` обозначает завершённый расчёт, а здоровье модели определяется отдельными pass/fail проверками. Экспортер проверяет freshness и подавляет business metrics при невалидном либо старом отчёте. Запросы сценариев выполняются последовательно; повторный конкурентный POST получает 409.
+# Блок 5. Prometheus и алерты
+
+Экспортер запускает настоящий `calculate_scenario(config, alias)` из Evidently. Он берёт только `reports/evidently/<scenario>/monitoring.json`, если связанный `status.json` и JSON отчёта имеют статус `success`, совпадающий сценарий и один UTC timestamp. После ошибки прошлый timestamp сохраняется, но бизнес-метрики подавляются до следующего успешного расчёта. Неопределённые fairness/target значения не превращаются в ноль. Переключение сценария атомарно; параллельный POST получает HTTP 409.
+
+## Запуск
+
+С имеющимися моделями/сценариями запустите стек из корня проекта:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+```
+
+Первый старт экспортера рассчитывает baseline; это может занять несколько минут. Если окружение чистое и артефактов ещё нет, сначала подготовьте их отдельным init-профилем:
+
+```powershell
+docker compose --profile init run --rm init
+docker compose --profile init run --rm init python -m adult_monitoring scenarios --config configs/example.yaml
+docker compose up --build -d
+```
+
+Exporter доступен на `http://127.0.0.1:8000/metrics`, Prometheus на `http://127.0.0.1:9090`. `/health` проверяет только готовность HTTP сервера. Переключение сценария выполняет loopback POST:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/scenario `
+  -ContentType 'application/json' -Body '{"scenario":"fairness_defect"}'
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/scenario `
+  -ContentType 'application/json' -Body '{"scenario":"recovery"}'
+```
+
+Поддерживаются только `baseline`, `feature_drift`, `feature_drift_strong`, `target_drift`, `fairness_shift`, `fairness_defect`, `recovery`. Расчёт сохраняет отчёт в соответствующем каталоге `reports/evidently/`. Prometheus опрашивает exporter каждые 5 секунд, правила оцениваются каждые 5 секунд, TTL отчёта — 180 секунд. Хранилище Prometheus остаётся в именованном volume.
+
+## PromQL для графиков
+
+Вставьте запросы в Prometheus Graph. Метрика F1 не имеет scenario label, поэтому baseline → defect → recovery рисуется одной временной серией.
+
+```promql
+ml_f1_score
+ml_f1_threshold
+ml_feature_drift_score
+ml_feature_drift_detected
+ml_target_drift_detected
+ml_group_selection_rate
+ml_group_tpr
+ml_disparate_impact
+ml_monitoring_available
+time() - ml_monitoring_last_success_timestamp_seconds
+```
+
+`ModelF1Low` использует threshold из отчёта обучения (`0.663487`) и должен перейти Pending → Firing на `fairness_defect` (фактический F1 около `0.644947`), затем сняться на recovery (около `0.703191`). В baseline DI около `0.322` уже ниже абсолютного порога `0.8`; `FairnessThresholdViolated` поэтому постоянен и не снимается от простого возврата к baseline. Для ухудшения относительно baseline есть `FairnessDeteriorated`: фиксированный reference DI около `0.32648`, алерт срабатывает, когда текущий DI становится менее 80% reference. Правила также включают индивидуальные feature drift, target и female-target drift, unavailable/stale и scrape-down.
+
+## Локальная проверка
+
+```powershell
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+docker compose config
+docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
+docker compose exec prometheus promtool test rules /etc/prometheus/rules.test.yml
+```
+
+Или проверьте тесты правил до запуска Prometheus образом `prom/prometheus:v3.10.0`: `promtool test rules` ожидает файл `prometheus/rules.test.yml` и `prometheus/rules.yml` рядом.
+
+## Проверка живого алерта без браузера
+
+При запущенном стеке выполнить в PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/verify_stack.py
+.\.venv\Scripts\python.exe scripts/plot_prometheus_evidence.py
+```
+
+То же через уже работающий контейнер, без локального Python-окружения:
+
+```powershell
+docker compose exec -T exporter python scripts/verify_stack.py --prometheus http://prometheus:9090
+docker compose exec -T exporter python scripts/plot_prometheus_evidence.py
+```
+
+Скрипт проверяет реальный scrape target и последовательно выбирает baseline, fairness_defect и recovery. Из API правил он ожидает Inactive → Pending → Firing → Inactive, сверяет F1 с порогом и активным сценарием, запрашивает `ALERTS` и измеренные временные ряды через `query_range`. При неуспехе возвращает ненулевой код и пытается восстановить recovery. Это HTTP-проверка работающей системы, без управления браузером.
+
+Результаты пишутся в `reports/prometheus_demo/evidence.json` и `reports/prometheus_demo/f1.png` (не входят в Git). PNG построен по реальным API-данным и наблюдениям состояния алерта; это не скриншот интерфейса Prometheus. Чтобы показать именно интерфейс, самостоятельно откройте `http://127.0.0.1:9090/query`, выберите график и введите `ml_f1_score`; состояние правил доступно в `http://127.0.0.1:9090/alerts`.
+
+Пока обновление выполняется, экспортер продолжает отдавать предыдущий ещё свежий успешный снимок, чтобы не сбрасывать Pending/Firing. В случае ошибки или истечения 180 секунд F1 и другие бизнес-метрики подавляются, доступность становится 0; время последнего успеха не продлевается. Ошибки записываются в журнал контейнера, а фоновый пересчёт выбирает актуальный сценарий под той же блокировкой, что и POST.
+
+## Фактический результат блока 5
+
+Окончательный Docker-образ собран и запущен вместе с Prometheus v3.10.0. Экспортер healthy, scrape target `adult-monitoring` имеет состояние UP. Контрольная сумма исходника экспортера в работающем контейнере совпала с файлом проекта. Все 25 Python-тестов, Compose validation, promtool check config (9 правил) и promtool test rules прошли.
+
+Живая проверка через API окончательного контейнера завершилась успешно:
+
+| Сценарий | Измеренный F1 | Состояние ModelF1Low |
+| --- | ---: | --- |
+| baseline | 0.7031911889296809 | Inactive |
+| fairness_defect | 0.644947209653092 | Pending → Firing |
+| recovery | 0.7031911889296809 | Inactive |
+
+Порог во всех случаях — 0.663487. Получена реальная серия `ALERTS{alertname="ModelF1Low",alertstate="firing"}`. В evidence.json сохранены 14 samples F1, 14 samples порога и 4 samples firing ALERTS. График `reports/prometheus_demo/f1.png` проверен по сохранённым данным. Отдельно на работающем стенде зафиксирован FeatureDriftDetected в Firing с `feature="age"`; ответ API сохранён в `reports/prometheus_demo/drift_alert.json`.
+
+Стенд после проверки оставлен в recovery: низкий F1 устранён. Исходный абсолютный fairness-сигнал сохраняется ожидаемо. Интерфейс браузера не открывался автоматически; ручной показ графика и Alerts нужен для защиты. История Prometheus сохраняется в volume; `docker compose down` остановит этот стенд, сохранив историю. Для повторного показа можно снова запустить verify_stack.py.

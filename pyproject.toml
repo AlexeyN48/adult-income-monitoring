@@ -12,6 +12,7 @@ dependencies = [
     "catboost==1.2.10",
     "evidently==0.7.23",
     "pandas==2.3.3",
+    "prometheus-client==0.26.0",
     "PyYAML==6.0.3",
 ]
 
